@@ -1,0 +1,78 @@
+package com.example.michael.soundcompass;
+
+import android.graphics.Matrix;
+import android.support.v7.app.AppCompatActivity;
+import android.os.Bundle;
+import android.view.View;
+import android.view.animation.Animation;
+import android.view.animation.LinearInterpolator;
+import android.view.animation.RotateAnimation;
+import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.TextView;
+
+public class MainActivity extends AppCompatActivity {
+
+    private ImageView myImageView;
+    private Button b;
+    public TextView text1;
+    private RotateAnimation anim;
+    private GCCphat gcc;
+
+    private boolean running = false;
+    private float angle = 0f;
+    private final int px = 0, py = 400;
+    private final double T = 0.75f;
+
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        b = (Button) findViewById(R.id.button);
+        text1 = (TextView) findViewById(R.id.text1);
+        myImageView = (ImageView) findViewById(R.id.imageView);
+        myImageView.setScaleType(ImageView.ScaleType.MATRIX);
+
+        b.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!running) {
+                    running = true;
+                    ((TextView) v).setText("Deactivate Compass");
+                    startCompass();
+                } else {
+                    running = false;
+                    ((TextView) v).setText("Activate Compass");
+                    stopCompass();
+                }
+            }
+        });
+    }
+
+    private void startCompass(){
+        try {
+            gcc = new GCCphat(text1, T);
+            gcc.execute();
+            changeAngle(10f);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void stopCompass() {
+        gcc.stop();
+    }
+
+    private void setAngle(float angle) {
+        Matrix matrix = new Matrix();
+        matrix.postRotate(angle, px, py);
+        myImageView.setImageMatrix(matrix);
+        this.angle = angle;
+    }
+
+    private void changeAngle(float deltaAngle) {
+        setAngle(angle + deltaAngle);
+    }
+}

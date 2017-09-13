@@ -1,0 +1,68 @@
+package com.example.michael.soundcompass;
+
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
+import android.os.AsyncTask;
+import android.widget.TextView;
+
+/**
+ * Created by Michael on 07.06.2017.
+ */
+
+public class GCCphat extends AsyncTask<Void, double[], Void>{
+    private final int fs;
+    private final double T;
+    private final int RECORDER_CHANNELS;
+    private int minBufferSize, BufferSize; //in byte units
+    //private final int RECORDER_BPP;
+    private boolean running;
+
+    private AudioRecord recorder;
+    private final TextView text;
+
+    public GCCphat(TextView text, double T) {
+        fs = 44100;
+        this.T = T;
+        RECORDER_CHANNELS = AudioFormat.CHANNEL_IN_STEREO;
+        minBufferSize = recorder.getMinBufferSize(fs,  RECORDER_CHANNELS, AudioFormat.ENCODING_PCM_16BIT);
+        BufferSize = (int) (fs*T);
+        this.text = text;
+        running = false;
+        text.setText("GCC-PHAT");
+    }
+
+    @Override
+    protected Void doInBackground(Void... arg0) {
+        running = true;
+        int i = 0;
+        while(running) {
+            double[] a = new double[1];
+            a[0] = i;
+            publishProgress(a);
+            i++;
+        }
+        return null;
+    }
+
+    @Override
+    protected void onProgressUpdate(double[]... params) {
+        text.setText(java.util.Arrays.toString(params[0]));
+    }
+
+    public void stop() {
+        running = false;
+        try {
+            if (recorder != null) {
+                recorder.stop();
+                recorder.release();
+            }
+        }catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public int gccphat(byte[] Data) {
+        return Data[0];
+    }
+}
