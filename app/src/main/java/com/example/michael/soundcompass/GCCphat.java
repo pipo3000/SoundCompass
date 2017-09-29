@@ -16,17 +16,18 @@ import edu.emory.mathcs.jtransforms.fft.DoubleFFT_1D;
 
 /**
  * Created by Michael on 07.06.2017.
+ * Calculates the DOA and the estimated TDOA. Includes all three algorithms despite the name.
  */
 
 public class GCCphat extends AsyncTask<Void, double[], Void>{
-    private final int fs;
-    private final double T;
+    private final int fs; //sampling frequency.
+    private final double T; //length of the analyzed samples.
     private final int RECORDER_CHANNELS;
     private int minBufferSize, BufferSize; //in byte units
     private boolean running;
-    private double oldangle, oldangleB;
-    private double[] queue;
-    private int type; //1 = gcc, 2 = aed.
+    private double oldangle, oldangleB; //save the last angles for red and blue arrow. Needed for the animation.
+    private double[] queue; // saves the last ten calculated TDOAs
+    private int type; //defines which algorithm to use: 1 = gcc, 2 = aed, 3 = Proposed.
 
     private AudioRecord recorder;
     private final TextView text;
@@ -36,7 +37,7 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
 
     public GCCphat(ImageView myView, ImageView blueArrow, TextView text, double T, int type) {
         fs = 44100;
-        this.T = T;
+        this.T = T; //length of the analyzed data.
         RECORDER_CHANNELS = AudioFormat.CHANNEL_IN_STEREO;
         minBufferSize = recorder.getMinBufferSize(fs, RECORDER_CHANNELS, AudioFormat.ENCODING_PCM_16BIT);
         redArrow = myView; this.blueArrow = blueArrow;
@@ -45,10 +46,6 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         this.text = text;
         fft = new DoubleFFT_1D(BufferSize/2);
         running = false;
-        //anim = new RotateAnimation(0, 45, Animation.RELATIVE_TO_SELF, 0f, Animation.RELATIVE_TO_SELF, 0.5f);
-        //anim.setDuration(250);
-        //anim.setRepeatCount(0);
-        //this.myView.setAnimation(anim);
         oldangle = 0; oldangleB = 0;
         queue = new double[10];
         this.type = type;
@@ -66,12 +63,12 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
                 recorder.release();
             recorder = new AudioRecord(MediaRecorder.AudioSource.MIC, fs, RECORDER_CHANNELS,
                     AudioFormat.ENCODING_PCM_16BIT, BufferSize);
-            //TODO: falls buffersize < minbuffersize
+            // if T is chosen too small, correct that mistake.
+            if (minBufferSize > BufferSize)
+                BufferSize = minBufferSize;
             short[] Data = new short[BufferSize];
             recorder.startRecording();
             while (running) {
-                //double[] b = record(Data);
-                //publishProgress(b);
                 recorder.read(Data, 0, BufferSize);
                 int tau_idx = 0;
                 if (type == 1) {
@@ -82,8 +79,6 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
                     tau_idx = theory(Data);
                 }
                 double angle = matchAngle(tau_idx);
-                if (tau_idx == 3)
-                    WriteWav.copy2wav(Data, 2);
                 double[] a = {angle};
                 publishProgress(a);
             }
@@ -99,7 +94,6 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         anim = new RotateAnimation((float) oldangle, -(float) params[0][0], Animation.RELATIVE_TO_SELF, 0f, Animation.RELATIVE_TO_SELF, 0.5f);
         anim.setDuration(300);
         anim.setRepeatCount(0);
-        //anim.setInterpolator(new LinearInterpolator());
         anim.setFillAfter(true);
         redArrow.setAnimation(anim);
         oldangle = -params[0][0];
@@ -107,7 +101,6 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         anim2 = new RotateAnimation((float) oldangleB, (float) a, Animation.RELATIVE_TO_SELF, 0f, Animation.RELATIVE_TO_SELF, 0.5f);
         anim2.setDuration(300);
         anim2.setRepeatCount(0);
-        //anim.setInterpolator(new LinearInterpolator());
         anim2.setFillAfter(true);
         try {
             blueArrow.setAnimation(anim2);
@@ -115,13 +108,6 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
             e.printStackTrace();
         }
         oldangleB = a;
-        //anim.start();
-        //double[] b = pop(-params[0][0]);
-        //Paint p = new Paint();
-        //p.setColor(Color.BLUE);
-        //p.setStrokeWidth(5);
-        //Canvas c = (Canvas) myView;
-        //c.drawLine(0, 200, 200, 200, p);
     }
 
     @Override
@@ -137,10 +123,12 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         }
     }
 
+    //use this to switch between the algorithms.
     public void setMode(int mode) {
         type = mode;
     }
 
+    //GCC-PHAT
     public int gccphat(short[] Data) {
         int channelLength = Data.length/2; //data per channel.
         double[][] channelSplit = separateChannels(Data);
@@ -154,11 +142,12 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         Cnormalize(X);
         fft.complexInverse(X, false);
         int tau_idx = argmax(X, 2);
-        if (tau_idx > channelLength)  //<-- TODO: delete this line and the following one.
+        if (tau_idx > channelLength)  // when tau greater than half the length, it is negative.
             tau_idx -= 2*channelLength;
         return tau_idx/2;
     }
 
+    //Proposed TDE-Algorithm
     public int theory(short[] Data) {
         //separate channels
         int channelLength = Data.length/2; //data per channel.
@@ -177,10 +166,11 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         double[] h1 = Cmultiply(Cmultiply(X1,H2), X2);
         fft.complexInverse(h1, false);
         //h1 should be real.
-        int tau_idx = (argmax(h1, 2)/2 - argmax(h2, 1));
+        int tau_idx = (argmax(h1, 2)/2 - argmax(h2, 1)); //h1 is complex and twice as long as h2.
         return tau_idx;
     }
 
+    //AED
     public int aed(short[] Data) {
         //parameter
         double mu = .001;
@@ -211,7 +201,7 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
 
     //teilt audiospur in channels auf und konvertiert sie ausserdem von short zu double.
     public double[][] separateChannels(short[] Data) {
-        //audiofile ist wie folgt gegliedert: 001100110011... (sample für jeweiligen channel) FÜR BYTES!!!
+        //audiofile in bytes ist wie folgt gegliedert: 001100110011... (sample für jeweiligen channel), 010101 für short.
         double[][] splitted = new double[2][Data.length/2];
         for (int i = 0; i<Data.length; i+=2) {
             splitted[0][i/2] = Data[i];
@@ -220,11 +210,13 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         return splitted;
     }
 
+    //calculates Complex conjugate of complex number.
     public void conj(double[] Data) {
         for (int i = 0; i<Data.length; i+=2)
             Data[i + 1] = -Data[i + 1];
     }
 
+    //multiplies two complex numbers
     public double[] Cmultiply(double[] x1, double[] x2) {
         double[] x = new double[x1.length];
         for (int i=0; i<x1.length; i+=2) {
@@ -234,6 +226,7 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         return x;
     }
 
+    //normalizes a complex number
     public void Cnormalize(double[] x) {
         for (int i=0; i<x.length; i+=2) {
             double mag = Math.sqrt(x[i]*x[i] + x[i+1]*x[i+1]);
@@ -242,6 +235,7 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         }
     }
 
+    //calculates the reciprocal value of a complex number
     public void Cinverse(double[] Data) {
         for (int i = 0; i<Data.length; i+=2) {
             double mag = Data[i]*Data[i]+Data[i+1]*Data[i+1];
@@ -250,6 +244,7 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         }
     }
 
+    //normalizes a real number
     public void Rnormalize(double[] Data) {
         double mag = 0;
         for (int i = 0; i<Data.length; i++)
@@ -259,6 +254,7 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
             Data[i] /= mag;
     }
 
+    //subtracts two real arrays from each other
     public double[] Rsubtract(double[] x1, double[] x2) {
         double[] output = new double[x1.length];
         for (int i = 0; i<x1.length; i++)
@@ -266,6 +262,7 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         return output;
     }
 
+    //multiplies two real arras with each other, then takes the sum.
     public double Rmultiply(double[] x1, double[] x2) {
         double sum = 0;
         for (int i = 0; i < x1.length; i ++)
@@ -273,6 +270,7 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         return sum;
     }
 
+    //multiplication of a real array with a real number
     public double[] Rmultiply(double x1, double[] x2) {
         double[] output = new double[x2.length];
         for (int i = 0; i<x2.length; i++)
@@ -280,6 +278,7 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         return output;
     }
 
+    //argamx of array. step = 1 for real arrays, step = 2 for complex ones.
     protected int argmax(double[] Data, int step) {
         double max = 0; int arg = 0;
         for(int i=0; i<Data.length; i+=step) {
@@ -291,6 +290,7 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         return arg;
     }
 
+    //matches TDOA to DOA.
     protected double matchAngle(int idx) {
         double[] angles = {0, 3.4000, 6.8000, 10.3000, 13.7000, 17.3000, 20.9000,
                 24.6000, 28.4000, 32.3000, 36.4000, 40.8000, 45.4000, 50.5000, 56.2000,
@@ -326,8 +326,8 @@ public class GCCphat extends AsyncTask<Void, double[], Void>{
         return mean;
     }
 
+    //returns the value of the angle that occurs most in queue.
     double count() {
-        //returns the value of the angle that occurs most in queue.
         Vector<Double> votes = new Vector<Double>();
         Vector<Double> cand = new Vector<Double>();
         //collect votes

@@ -9,12 +9,13 @@ import java.io.ObjectOutputStream;
 
 /**
  * Created by Michael on 08.06.2017.
+ * writes microphone output into wav files. Useful for debugging.
  */
 
 public class WriteWav {
 
     private final static int fs = 44100;
-    private final static int RECORDER_BPP = 16; //<---- Was ist das?
+    private final static int RECORDER_BPP = 16;
 
     public static void copy2wav(short[] Data, int channels) {
         int BufferSize = Data.length;

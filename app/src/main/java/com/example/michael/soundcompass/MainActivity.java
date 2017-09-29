@@ -16,7 +16,6 @@ public class MainActivity extends AppCompatActivity {
     private Button b;
     public TextView text1;
     private GCCphat gcc;
-    //private RadioButton gccbtn, aedbtn;
 
     private boolean running = false;
     private float angle = 0f;
@@ -105,12 +104,5 @@ public class MainActivity extends AppCompatActivity {
                 }
                 break;
         }
-    }
-
-    private void setAngle(float angle) {
-        Matrix matrix = new Matrix();
-        matrix.postRotate(angle, px, py);
-        redArrow.setImageMatrix(matrix);
-        this.angle = angle;
     }
 }
